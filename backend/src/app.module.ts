@@ -7,9 +7,12 @@ import { UsersModule } from './users/users.module';
 import { InteractionsModule } from './interactions/interactions.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { TutorModule } from './tutor/tutor.module';
+import { AiModule } from './ai/ai.module';
+import { PedagogicalModule } from './pedagogical/pedagogical.module';
+import { EvaluatorModule } from './evaluator/evaluator.module';
 
 @Module({
-  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule],
+  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule, AiModule, PedagogicalModule, EvaluatorModule],
   controllers: [AppController],
   providers: [AppService],
 })

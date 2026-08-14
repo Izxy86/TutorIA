@@ -57,4 +57,33 @@ export class KnowledgeService {
       },
     });
   }
+
+  async findRelevant(subjectId: string, question: string) {
+    const words = question
+      .toLowerCase()
+      .replace(/[¿?¡!.,]/g, '')
+      .split(/\s+/)
+      .filter((word) => word.length > 4);
+
+    return this.prisma.knowledgeItem.findMany({
+      where: {
+        subjectId,
+        OR: words.flatMap((word) => [
+          {
+            title: {
+              contains: word,
+              mode: 'insensitive' as const,
+            },
+          },
+          {
+            topic: {
+              contains: word,
+              mode: 'insensitive' as const,
+            },
+          },
+        ]),
+      },
+      take: 5,
+    });
+  }
 }
