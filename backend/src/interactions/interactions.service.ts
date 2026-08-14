@@ -37,4 +37,14 @@ export class InteractionsService {
       },
     });
   }
+
+  findRecentByUser(userId: string, limit = 5) {
+  return this.prisma.interaction.findMany({
+    where: { userId },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: limit,
+  });
+}
 }

@@ -6,6 +6,7 @@ import { InteractionsModule } from '../interactions/interactions.module';
 import { AiModule } from '../ai/ai.module';
 import { PedagogicalModule } from '../pedagogical/pedagogical.module';
 import { EvaluatorModule } from '../evaluator/evaluator.module';
+import { ProgressModule } from '../progress/progress.module';
 
 @Module({
   imports: [KnowledgeModule, 
@@ -14,7 +15,8 @@ import { EvaluatorModule } from '../evaluator/evaluator.module';
     TutorModule,
     PedagogicalModule,
     TutorModule,
-    EvaluatorModule],
+    EvaluatorModule,
+    ProgressModule],
   controllers: [TutorController],
   providers: [TutorService],
 })
