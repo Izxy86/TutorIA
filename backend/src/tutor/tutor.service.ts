@@ -174,13 +174,16 @@ Cumplí estrictamente la regla pedagógica indicada.
     }
 
     // 9. Persistir interacción
-    await this.interactionsService.create(
+    await this.interactionsService.createWithEvaluation(
       userId,
       subjectId,
       question,
       response,
       activityType,
       true,
+      evaluation.suspectedEvasion,
+      evaluation.needsHelp,
+      evaluation.reason,
     );
 
     // 10. Devolver resultado
@@ -194,6 +197,8 @@ Cumplí estrictamente la regla pedagógica indicada.
       validationReason: evaluation.reason ?? null,
       attempts,
       response,
+      suspectedEvasion: evaluation.suspectedEvasion,
+      needsHelp: evaluation.needsHelp,
     };
   }
 }

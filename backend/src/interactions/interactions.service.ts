@@ -47,4 +47,38 @@ export class InteractionsService {
     take: limit,
   });
 }
+
+createWithEvaluation(
+  userId: string,
+  subjectId: string,
+  question: string,
+  response: string,
+  activityType: ActivityType,
+  usedAI: boolean,
+  suspectedEvasion: boolean,
+  needsHelp: boolean,
+  feedback?: string,
+) {
+  return this.prisma.interaction.create({
+    data: {
+      userId,
+      subjectId,
+      question,
+      response,
+      activityType,
+      usedAI,
+      evaluation: {
+        create: {
+          userId,
+          suspectedEvasion,
+          needsHelp,
+          feedback,
+        },
+      },
+    },
+    include: {
+      evaluation: true,
+    },
+  });
+}
 }

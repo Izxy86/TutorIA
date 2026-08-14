@@ -11,9 +11,10 @@ import { AiModule } from './ai/ai.module';
 import { PedagogicalModule } from './pedagogical/pedagogical.module';
 import { EvaluatorModule } from './evaluator/evaluator.module';
 import { ProgressModule } from './progress/progress.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
-  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule, AiModule, PedagogicalModule, EvaluatorModule, ProgressModule],
+  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule, AiModule, PedagogicalModule, EvaluatorModule, ProgressModule, ReportsModule],
   controllers: [AppController],
   providers: [AppService],
 })
