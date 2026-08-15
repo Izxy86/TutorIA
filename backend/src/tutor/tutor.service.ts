@@ -24,7 +24,6 @@ export class TutorService {
     question: string,
     activityType: ActivityType,
   ) {
-    // 1. Buscar conocimiento local relevante
     const localResults = await this.knowledgeService.findRelevant(
       subjectId,
       question,
@@ -54,7 +53,6 @@ export class TutorService {
       };
     }
 
-    // 2. Recuperar memoria reciente del alumno
     const history = await this.interactionsService.findRecentByUser(
       userId,
       5,
@@ -70,7 +68,6 @@ Tipo de actividad: ${item.activityType}
       )
       .join('\n');
 
-    // 3. Recuperar progreso académico
     const progress =
       await this.progressService.findByUserAndSubject(
         userId,
@@ -84,11 +81,9 @@ Tipo de actividad: ${item.activityType}
       )
       .join('\n');
 
-    // 4. Obtener estrategia pedagógica
     const pedagogicalInstruction =
       this.pedagogicalService.getInstruction(activityType);
 
-    // 5. Construir prompt
     const prompt = `
 Sos TutorIA, un tutor educativo institucional.
 
@@ -118,10 +113,8 @@ No inventes información sobre el estudiante.
 Cumplí estrictamente la regla pedagógica indicada.
 `;
 
-    // 6. Consultar IA
     let response = await this.aiService.generate(prompt);
 
-    // 7. Evaluar respuesta
     let evaluation = this.evaluatorService.evaluate(
       question,
       response,
@@ -130,7 +123,6 @@ Cumplí estrictamente la regla pedagógica indicada.
 
     let attempts = 0;
 
-    // 8. Reintentar una vez si el evaluador rechaza la respuesta
     while (!evaluation.valid && attempts < 1) {
       const retryPrompt = `
 Sos TutorIA, un tutor educativo institucional.
@@ -173,7 +165,6 @@ Cumplí estrictamente la regla pedagógica indicada.
       attempts++;
     }
 
-    // 9. Persistir interacción
     await this.interactionsService.createWithEvaluation(
       userId,
       subjectId,
@@ -186,7 +177,6 @@ Cumplí estrictamente la regla pedagógica indicada.
       evaluation.reason,
     );
 
-    // 10. Devolver resultado
     return {
       source: 'AI',
       usedAI: true,
@@ -199,6 +189,31 @@ Cumplí estrictamente la regla pedagógica indicada.
       response,
       suspectedEvasion: evaluation.suspectedEvasion,
       needsHelp: evaluation.needsHelp,
+    };
+  }
+
+  async evaluateAnswer(
+    userId: string,
+    subjectId: string,
+    topic: string,
+    answer: string,
+    expectedAnswer: string,
+  ) {
+    const normalizedAnswer = answer.trim().toLowerCase();
+    const normalizedExpected = expectedAnswer.trim().toLowerCase();
+
+    const correct = normalizedAnswer === normalizedExpected;
+
+    const progress = await this.progressService.updateProgress(
+      userId,
+      subjectId,
+      topic,
+      correct,
+    );
+
+    return {
+      correct,
+      progress,
     };
   }
 }
