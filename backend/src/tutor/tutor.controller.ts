@@ -1,11 +1,15 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { TutorService } from './tutor.service';
-import { ActivityType } from '../../generated/prisma/client';
+import { ActivityType, UserRole } from '../../generated/prisma/client';
+import { JwtGuard } from '../auth/jwt/jwt.guard';
+import { RolesGuard } from '../auth/roles/roles.guard';
+import { Roles } from '../auth/roles/roles.decorator';
 
 @Controller('tutor')
 export class TutorController {
   constructor(private readonly tutorService: TutorService) {}
-
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
   @Post('ask')
   ask(
     @Body('userId') userId: string,

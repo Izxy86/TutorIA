@@ -12,9 +12,10 @@ import { PedagogicalModule } from './pedagogical/pedagogical.module';
 import { EvaluatorModule } from './evaluator/evaluator.module';
 import { ProgressModule } from './progress/progress.module';
 import { ReportsModule } from './reports/reports.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule, AiModule, PedagogicalModule, EvaluatorModule, ProgressModule, ReportsModule],
+  imports: [PrismaModule, SubjectsModule, UsersModule, InteractionsModule, KnowledgeModule, TutorModule, AiModule, PedagogicalModule, EvaluatorModule, ProgressModule, ReportsModule, AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -1,5 +1,14 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { ReportsService } from './reports.service';
+import { JwtGuard } from '../auth/jwt/jwt.guard';
+import { RolesGuard } from '../auth/roles/roles.guard';
+import { Roles } from '../auth/roles/roles.decorator';
+import { UserRole } from '../../generated/prisma/client';
 
 @Controller('reports')
 export class ReportsController {
@@ -7,6 +16,8 @@ export class ReportsController {
     private readonly reportsService: ReportsService,
   ) {}
 
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.STUDENT, UserRole.TEACHER)
   @Get('student/:userId/:subjectId')
   getStudentReport(
     @Param('userId') userId: string,
@@ -18,6 +29,8 @@ export class ReportsController {
     );
   }
 
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.TEACHER)
   @Get('teacher/:subjectId')
   getTeacherDashboard(
     @Param('subjectId') subjectId: string,

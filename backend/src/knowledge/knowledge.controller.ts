@@ -1,10 +1,24 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
+import { JwtGuard } from '../auth/jwt/jwt.guard';
+import { RolesGuard } from '../auth/roles/roles.guard';
+import { Roles } from '../auth/roles/roles.decorator';
+import { UserRole } from '../../generated/prisma/client';
 
 @Controller('knowledge')
 export class KnowledgeController {
   constructor(private readonly knowledgeService: KnowledgeService) {}
 
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.TEACHER)
   @Post()
   create(
     @Body('subjectId') subjectId: string,
