@@ -1,29 +1,99 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { KnowledgeSource } from '../../generated/prisma/client';
 
 @Injectable()
 export class KnowledgeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(
+  async create(
     subjectId: string,
     title: string,
     content: string,
     topic?: string,
   ) {
+    const normalizedTitle = title.trim();
+
+    const existing =
+      await this.prisma.knowledgeItem.findFirst({
+        where: {
+          subjectId,
+          source: KnowledgeSource.TEACHER,
+          title: {
+            equals: normalizedTitle,
+            mode: 'insensitive',
+          },
+        },
+      });
+
+    if (existing) {
+      throw new ConflictException(
+        'Ya existe material docente con ese título.',
+      );
+    }
+
     return this.prisma.knowledgeItem.create({
       data: {
         subjectId,
-        title,
-        content,
-        topic,
+        title: normalizedTitle,
+        content: content.trim(),
+        topic: topic?.trim() || null,
+        source: KnowledgeSource.TEACHER,
+        validated: true,
+      },
+    });
+  }
+
+  async saveFromAI(
+    subjectId: string,
+    question: string,
+    content: string,
+  ) {
+    const normalizedQuestion = question.trim();
+
+    const existing =
+      await this.prisma.knowledgeItem.findFirst({
+        where: {
+          subjectId,
+          source: KnowledgeSource.AI,
+          title: {
+            equals: normalizedQuestion,
+            mode: 'insensitive',
+          },
+        },
+      });
+
+    if (existing) {
+      return this.prisma.knowledgeItem.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          content: content.trim(),
+          validated: true,
+        },
+      });
+    }
+
+    return this.prisma.knowledgeItem.create({
+      data: {
+        subjectId,
+        title: normalizedQuestion,
+        content: content.trim(),
+        source: KnowledgeSource.AI,
+        validated: true,
       },
     });
   }
 
   findBySubject(subjectId: string) {
     return this.prisma.knowledgeItem.findMany({
-      where: { subjectId },
+      where: {
+        subjectId,
+      },
       orderBy: {
         createdAt: 'desc',
       },
@@ -34,56 +104,111 @@ export class KnowledgeService {
     return this.prisma.knowledgeItem.findMany({
       where: {
         subjectId,
-        OR: [
+        AND: [
           {
-            title: {
-              contains: text,
-              mode: 'insensitive',
-            },
+            OR: [
+              {
+                source: KnowledgeSource.TEACHER,
+              },
+              {
+                source: KnowledgeSource.AI,
+                validated: true,
+              },
+            ],
           },
           {
-            topic: {
-              contains: text,
-              mode: 'insensitive',
-            },
-          },
-          {
-            content: {
-              contains: text,
-              mode: 'insensitive',
-            },
+            OR: [
+              {
+                title: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                topic: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                content: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+            ],
           },
         ],
       },
     });
   }
 
-  async findRelevant(subjectId: string, question: string) {
+  async findRelevant(
+    subjectId: string,
+    question: string,
+  ) {
     const words = question
       .toLowerCase()
       .replace(/[¿?¡!.,]/g, '')
       .split(/\s+/)
       .filter((word) => word.length > 4);
 
+    if (words.length === 0) {
+      return [];
+    }
+
     return this.prisma.knowledgeItem.findMany({
       where: {
         subjectId,
-        OR: words.flatMap((word) => [
+        AND: [
           {
-            title: {
-              contains: word,
-              mode: 'insensitive' as const,
-            },
+            OR: [
+              {
+                source: KnowledgeSource.TEACHER,
+              },
+              {
+                source: KnowledgeSource.AI,
+                validated: true,
+              },
+            ],
           },
           {
-            topic: {
-              contains: word,
-              mode: 'insensitive' as const,
-            },
+            OR: words.flatMap((word) => [
+              {
+                title: {
+                  contains: word,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                topic: {
+                  contains: word,
+                  mode: 'insensitive' as const,
+                },
+              },
+            ]),
           },
-        ]),
+        ],
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
       take: 5,
     });
   }
+
+  async validate(id: string) {
+  return this.prisma.knowledgeItem.update({
+    where: { id },
+    data: {
+      validated: true,
+    },
+  });
+}
+
+async remove(id: string) {
+  return this.prisma.knowledgeItem.delete({
+    where: { id },
+  });
+}
 }

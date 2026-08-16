@@ -1,4 +1,11 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { Request } from 'express';
 import { TutorService } from './tutor.service';
 import {
   ActivityType,
@@ -8,21 +15,31 @@ import { JwtGuard } from '../auth/jwt/jwt.guard';
 import { RolesGuard } from '../auth/roles/roles.guard';
 import { Roles } from '../auth/roles/roles.decorator';
 
+interface AuthenticatedRequest extends Request {
+  user: {
+    sub: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
 @Controller('tutor')
 export class TutorController {
-  constructor(private readonly tutorService: TutorService) {}
+  constructor(
+    private readonly tutorService: TutorService,
+  ) {}
 
   @UseGuards(JwtGuard, RolesGuard)
   @Roles(UserRole.STUDENT)
   @Post('ask')
   ask(
-    @Body('userId') userId: string,
+    @Req() request: AuthenticatedRequest,
     @Body('subjectId') subjectId: string,
     @Body('question') question: string,
     @Body('activityType') activityType: ActivityType,
   ) {
     return this.tutorService.ask(
-      userId,
+      request.user.sub,
       subjectId,
       question,
       activityType,
@@ -33,18 +50,14 @@ export class TutorController {
   @Roles(UserRole.STUDENT)
   @Post('evaluate')
   evaluate(
-    @Body('userId') userId: string,
+    @Req() request: AuthenticatedRequest,
     @Body('subjectId') subjectId: string,
-    @Body('topic') topic: string,
     @Body('answer') answer: string,
-    @Body('expectedAnswer') expectedAnswer: string,
   ) {
     return this.tutorService.evaluateAnswer(
-      userId,
+      request.user.sub,
       subjectId,
-      topic,
       answer,
-      expectedAnswer,
     );
   }
 }

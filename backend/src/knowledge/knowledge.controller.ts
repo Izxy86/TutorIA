@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -34,16 +36,33 @@ export class KnowledgeController {
     );
   }
 
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.TEACHER)
   @Get('subject/:subjectId')
   findBySubject(@Param('subjectId') subjectId: string) {
     return this.knowledgeService.findBySubject(subjectId);
   }
 
+  @UseGuards(JwtGuard)
   @Get('search/:subjectId')
   search(
     @Param('subjectId') subjectId: string,
     @Query('q') query: string,
   ) {
     return this.knowledgeService.search(subjectId, query);
+  }
+
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Patch(':id/validate')
+  validate(@Param('id') id: string) {
+    return this.knowledgeService.validate(id);
+  }
+
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles(UserRole.TEACHER)
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.knowledgeService.remove(id);
   }
 }

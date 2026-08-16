@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
@@ -21,10 +27,12 @@ interface StudentReport {
     name: string
     email: string
   }
+
   subject: {
     id: string
     name: string
   }
+
   summary: {
     totalInteractions: number
     aiInteractions: number
@@ -33,11 +41,14 @@ interface StudentReport {
     helpRequests: number
     averageMastery: number
   }
+
   alerts: {
     needsAttention: boolean
     reasons: string[]
   }
+
   progress: ProgressItem[]
+
   topicsNeedingReinforcement: {
     topic: string
     masteryLevel: number
@@ -54,30 +65,51 @@ const subjectId = ref(
 const activityType =
   ref<'LEARNING' | 'PRACTICE'>('LEARNING')
 
+const responseActivityType =
+  ref<'LEARNING' | 'PRACTICE' | null>(null)
+
 const question = ref('')
+const floatingQuestion = ref('')
 const response = ref('')
 const source = ref('')
+
 const loading = ref(false)
 const error = ref('')
+
 
 const report = ref<StudentReport | null>(null)
 
 const evaluationAnswer = ref('')
 const evaluationResult =
   ref<'correct' | 'incorrect' | ''>('')
-
+const evaluationFeedback = ref('')
 const evaluating = ref(false)
+
+const answerSection =
+  ref<HTMLElement | null>(null)
+
+const activitySection =
+  ref<HTMLElement | null>(null)
+
+const showFloatingComposer = ref(false)
+
+let activityObserver: IntersectionObserver | null =
+  null
 
 const userName = computed(
   () => auth.user?.name ?? 'Estudiante',
 )
 
 const averageMastery = computed(
-  () => report.value?.summary.averageMastery ?? 0,
+  () =>
+    report.value?.summary.averageMastery ??
+    0,
 )
 
 const currentProgress = computed(
-  () => report.value?.progress?.[0] ?? null,
+  () =>
+    report.value?.progress?.[0] ??
+    null,
 )
 
 const currentTopic = computed(
@@ -87,50 +119,78 @@ const currentTopic = computed(
 )
 
 const currentMastery = computed(
-  () => currentProgress.value?.masteryLevel ?? 0,
+  () =>
+    currentProgress.value?.masteryLevel ??
+    0,
 )
 
 const subjectName = computed(
-  () => report.value?.subject.name ?? 'Matemática',
+  () =>
+    report.value?.subject.name ??
+    'Matemática',
 )
+
+const askTutorFromFloating = async () => {
+  if (!floatingQuestion.value.trim()) return
+
+  question.value = floatingQuestion.value
+
+  await askTutor()
+
+  floatingQuestion.value = ''
+}
 
 const loadReport = async () => {
   if (!auth.user?.id) return
 
   try {
-    const { data } = await api.get<StudentReport>(
-      `/reports/student/${auth.user.id}/${subjectId.value}`,
-    )
+    const { data } =
+      await api.get<StudentReport>(
+        `/reports/student/${auth.user.id}/${subjectId.value}`,
+      )
 
     report.value = data
   } catch {
-    error.value = 'No pudimos cargar tu progreso.'
+    error.value =
+      'No pudimos cargar tu progreso.'
   }
 }
 
 const askTutor = async () => {
-  if (!question.value.trim() || !auth.user?.id) {
-    return
-  }
+  if (!question.value.trim()) return
 
   loading.value = true
   error.value = ''
+
   response.value = ''
+  responseActivityType.value = null
+
   evaluationAnswer.value = ''
   evaluationResult.value = ''
+  evaluationFeedback.value = ''
 
   try {
-    const { data } = await api.post('/tutor/ask', {
-      userId: auth.user.id,
-      subjectId: subjectId.value,
-      question: question.value,
-      activityType: activityType.value,
-    })
+    const { data } =
+      await api.post('/tutor/ask', {
+        subjectId: subjectId.value,
+        question: question.value,
+        activityType:
+          activityType.value,
+      })
 
     response.value = data.response
     source.value = data.source
 
+    responseActivityType.value =
+      activityType.value
+
     await loadReport()
+    await nextTick()
+
+    answerSection.value?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
   } catch {
     error.value =
       'No pudimos procesar tu consulta. Intentá nuevamente.'
@@ -140,29 +200,29 @@ const askTutor = async () => {
 }
 
 const evaluateAnswer = async () => {
-  if (
-    !auth.user?.id ||
-    !evaluationAnswer.value.trim()
-  ) {
+  if (!evaluationAnswer.value.trim()) {
     return
   }
 
   evaluating.value = true
   evaluationResult.value = ''
+  evaluationFeedback.value = ''
   error.value = ''
 
   try {
-    const { data } = await api.post('/tutor/evaluate', {
-      userId: auth.user.id,
-      subjectId: subjectId.value,
-      topic: 'Teorema de Pitágoras',
-      answer: evaluationAnswer.value,
-      expectedAnswer: '5',
-    })
+    const { data } =
+      await api.post('/tutor/evaluate', {
+        subjectId: subjectId.value,
+        answer: evaluationAnswer.value,
+      })
 
-    evaluationResult.value = data.correct
-      ? 'correct'
-      : 'incorrect'
+    evaluationResult.value =
+      data.correct
+        ? 'correct'
+        : 'incorrect'
+
+    evaluationFeedback.value =
+      data.feedback ?? ''
 
     await loadReport()
   } catch {
@@ -178,8 +238,29 @@ const logout = async () => {
   await router.push('/login')
 }
 
-onMounted(() => {
-  loadReport()
+onMounted(async () => {
+  await loadReport()
+
+  activityObserver =
+    new IntersectionObserver(
+      ([entry]) => {
+        showFloatingComposer.value =
+          !entry?.isIntersecting
+      },
+      {
+        threshold: 0.15,
+      },
+    )
+
+  if (activitySection.value) {
+    activityObserver.observe(
+      activitySection.value,
+    )
+  }
+})
+
+onBeforeUnmount(() => {
+  activityObserver?.disconnect()
 })
 </script>
 
@@ -187,18 +268,30 @@ onMounted(() => {
   <div class="student-page">
     <header class="topbar">
       <div class="brand">
-        <div class="logo">T</div>
+        <div class="logo">
+          T
+        </div>
 
         <div>
-          <strong>TutorIA</strong>
-          <span>Espacio del estudiante</span>
+          <strong>
+            TutorIA
+          </strong>
+
+          <span>
+            Espacio del estudiante
+          </span>
         </div>
       </div>
 
       <div class="user-area">
         <div class="user-info">
-          <strong>{{ userName }}</strong>
-          <span>Estudiante</span>
+          <strong>
+            {{ userName }}
+          </strong>
+
+          <span>
+            Estudiante
+          </span>
         </div>
 
         <button
@@ -210,6 +303,69 @@ onMounted(() => {
       </div>
     </header>
 
+    <Transition name="floating">
+      <div
+        v-if="showFloatingComposer"
+        class="floating-composer"
+      >
+        <div class="floating-input-row">
+  <textarea
+    v-model="floatingQuestion"
+    rows="1"
+    placeholder="Preguntale algo a TutorIA..."
+    @keydown.enter.exact.prevent="askTutorFromFloating"
+  ></textarea>
+
+  <button
+    class="floating-send"
+    type="button"
+    :disabled="loading || !floatingQuestion.trim()"
+    @click="askTutorFromFloating"
+  >
+    {{ loading ? '...' : '↑' }}
+  </button>
+</div>
+
+        <div class="floating-tools">
+          <button
+            type="button"
+            class="floating-mode-button"
+            :class="{
+              active:
+                activityType ===
+                'LEARNING',
+            }"
+            @click="
+              activityType =
+                'LEARNING'
+            "
+          >
+            Aprender
+          </button>
+
+          <button
+            type="button"
+            class="floating-mode-button"
+            :class="{
+              active:
+                activityType ===
+                'PRACTICE',
+            }"
+            @click="
+              activityType =
+                'PRACTICE'
+            "
+          >
+            Practicar
+          </button>
+
+          <span class="floating-subject">
+            {{ subjectName }}
+          </span>
+        </div>
+      </div>
+    </Transition>
+
     <main class="content">
       <section class="welcome">
         <div>
@@ -217,29 +373,39 @@ onMounted(() => {
             TU ESPACIO DE APRENDIZAJE
           </span>
 
-          <h1>Hola, {{ userName }}</h1>
+          <h1>
+            Hola, {{ userName }}
+          </h1>
 
           <p>
-            Preguntá, practicá y avanzá a tu ritmo.
-            TutorIA adapta la ayuda según tu progreso.
+            Preguntá, practicá y avanzá
+            a tu ritmo. TutorIA adapta
+            la ayuda según tu progreso.
           </p>
         </div>
 
         <div class="progress-card">
           <span>
-            Tu progreso en {{ subjectName }}
+            Tu progreso en
+            {{ subjectName }}
           </span>
 
           <div class="progress-value">
-            <strong>{{ averageMastery }}%</strong>
-            <small>Dominio actual</small>
+            <strong>
+              {{ averageMastery }}%
+            </strong>
+
+            <small>
+              Dominio actual
+            </small>
           </div>
 
           <div class="progress-bar">
             <div
               class="progress-fill"
               :style="{
-                width: `${averageMastery}%`,
+                width:
+                  `${averageMastery}%`,
               }"
             ></div>
           </div>
@@ -249,21 +415,23 @@ onMounted(() => {
       <section class="workspace">
         <div class="question-card">
           <div class="section-title">
-            <div>
-              <span class="eyebrow">
-                NUEVA CONSULTA
-              </span>
+            <span class="eyebrow">
+              NUEVA CONSULTA
+            </span>
 
-              <h2>
-                ¿Qué querés aprender hoy?
-              </h2>
-            </div>
+            <h2>
+              ¿Qué querés aprender hoy?
+            </h2>
           </div>
 
           <div class="field">
-            <label>Materia</label>
+            <label>
+              Materia
+            </label>
 
-            <select v-model="subjectId">
+            <select
+              v-model="subjectId"
+            >
               <option
                 value="9f274882-e017-4bb1-9da0-d5668f5beb12"
               >
@@ -272,7 +440,10 @@ onMounted(() => {
             </select>
           </div>
 
-          <div class="field">
+          <div
+            ref="activitySection"
+            class="field"
+          >
             <label>
               ¿Cómo querés trabajar?
             </label>
@@ -283,15 +454,21 @@ onMounted(() => {
                 class="activity-button"
                 :class="{
                   active:
-                    activityType === 'LEARNING',
+                    activityType ===
+                    'LEARNING',
                 }"
                 @click="
-                  activityType = 'LEARNING'
+                  activityType =
+                    'LEARNING'
                 "
               >
-                <strong>Aprender</strong>
+                <strong>
+                  Aprender
+                </strong>
+
                 <span>
-                  Explicame un tema paso a paso
+                  Explicame un tema
+                  paso a paso
                 </span>
               </button>
 
@@ -300,21 +477,29 @@ onMounted(() => {
                 class="activity-button"
                 :class="{
                   active:
-                    activityType === 'PRACTICE',
+                    activityType ===
+                    'PRACTICE',
                 }"
                 @click="
-                  activityType = 'PRACTICE'
+                  activityType =
+                    'PRACTICE'
                 "
               >
-                <strong>Practicar</strong>
+                <strong>
+                  Practicar
+                </strong>
+
                 <span>
-                  Guiame sin darme la respuesta
+                  Guiame sin darme
+                  la respuesta
                 </span>
               </button>
             </div>
           </div>
 
-          <form @submit.prevent="askTutor">
+          <form
+            @submit.prevent="askTutor"
+          >
             <div class="field">
               <label for="question">
                 Tu pregunta
@@ -359,14 +544,17 @@ onMounted(() => {
               PROGRESO
             </span>
 
-            <h3>{{ currentTopic }}</h3>
+            <h3>
+              {{ currentTopic }}
+            </h3>
 
             <div class="topic-progress">
               <div class="progress-bar">
                 <div
                   class="progress-fill"
                   :style="{
-                    width: `${currentMastery}%`,
+                    width:
+                      `${currentMastery}%`,
                   }"
                 ></div>
               </div>
@@ -379,9 +567,13 @@ onMounted(() => {
             <p
               v-if="currentProgress"
             >
-              {{ currentProgress.correctAnswers }}
-              respuestas correctas de
-              {{ currentProgress.attempts }}
+              {{
+                currentProgress.correctAnswers
+              }}
+              correctas de
+              {{
+                currentProgress.attempts
+              }}
               intentos.
             </p>
 
@@ -413,6 +605,7 @@ onMounted(() => {
 
       <section
         v-if="response"
+        ref="answerSection"
         class="answer-card"
       >
         <div class="answer-header">
@@ -441,7 +634,8 @@ onMounted(() => {
 
         <div
           v-if="
-            activityType === 'PRACTICE'
+            responseActivityType ===
+            'PRACTICE'
           "
           class="evaluation-box"
         >
@@ -454,8 +648,8 @@ onMounted(() => {
           </h3>
 
           <p>
-            Escribí tu respuesta para registrar
-            tu progreso.
+            Escribí tu respuesta para
+            registrar tu progreso.
           </p>
 
           <div class="evaluation-row">
@@ -463,7 +657,9 @@ onMounted(() => {
               v-model="evaluationAnswer"
               type="text"
               placeholder="Tu respuesta"
-              @keyup.enter="evaluateAnswer"
+              @keyup.enter="
+                evaluateAnswer
+              "
             />
 
             <button
@@ -472,7 +668,9 @@ onMounted(() => {
                 evaluating ||
                 !evaluationAnswer.trim()
               "
-              @click="evaluateAnswer"
+              @click="
+                evaluateAnswer
+              "
             >
               {{
                 evaluating
@@ -484,22 +682,34 @@ onMounted(() => {
 
           <div
             v-if="
-              evaluationResult === 'correct'
+              evaluationResult ===
+              'correct'
             "
-            class="evaluation-feedback success"
+            class="
+              evaluation-feedback
+              success
+            "
           >
-            Correcto. Tu progreso fue
-            actualizado.
+            {{
+    evaluationFeedback ||
+    'Correcto. Tu progreso fue actualizado.'
+  }}
           </div>
 
           <div
             v-if="
-              evaluationResult === 'incorrect'
+              evaluationResult ===
+              'incorrect'
             "
-            class="evaluation-feedback incorrect"
+            class="
+              evaluation-feedback
+              incorrect
+            "
           >
-            Todavía no. Revisá el procedimiento
-            e intentá nuevamente.
+            {{
+    evaluationFeedback ||
+    'Todavía no. Revisá el procedimiento e intentá nuevamente.'
+  }}
           </div>
         </div>
       </section>
@@ -534,9 +744,11 @@ onMounted(() => {
   padding: 0 7%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content:
+    space-between;
   background: white;
-  border-bottom: 1px solid #ebe8f3;
+  border-bottom:
+    1px solid #ebe8f3;
 }
 
 .brand,
@@ -577,7 +789,8 @@ onMounted(() => {
 
 .logout-button {
   padding: 9px 15px;
-  border: 1px solid #ddd8e9;
+  border:
+    1px solid #ddd8e9;
   border-radius: 9px;
   background: white;
   color: #5e566c;
@@ -587,12 +800,13 @@ onMounted(() => {
 .content {
   width: min(1180px, 88%);
   margin: 0 auto;
-  padding: 52px 0 70px;
+  padding: 52px 0 120px;
 }
 
 .welcome {
   display: flex;
-  justify-content: space-between;
+  justify-content:
+    space-between;
   gap: 40px;
   margin-bottom: 38px;
 }
@@ -655,7 +869,8 @@ onMounted(() => {
   height: 100%;
   border-radius: inherit;
   background: #7658cf;
-  transition: width 0.35s ease;
+  transition:
+    width 0.35s ease;
 }
 
 .workspace {
@@ -670,7 +885,8 @@ onMounted(() => {
 .topic-card,
 .tip-card,
 .answer-card {
-  border: 1px solid #ebe8f3;
+  border:
+    1px solid #ebe8f3;
   background: white;
   box-shadow:
     0 10px 35px
@@ -703,7 +919,8 @@ onMounted(() => {
 select,
 textarea {
   width: 100%;
-  border: 1px solid #dcd7e8;
+  border:
+    1px solid #dcd7e8;
   border-radius: 11px;
   outline: none;
   background: #fcfbfe;
@@ -732,14 +949,16 @@ textarea:focus {
 
 .activity-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns:
+    1fr 1fr;
   gap: 12px;
 }
 
 .activity-button {
   padding: 16px;
   text-align: left;
-  border: 1px solid #ddd8e9;
+  border:
+    1px solid #ddd8e9;
   border-radius: 12px;
   background: white;
   color: #4e475d;
@@ -798,7 +1017,8 @@ textarea:focus {
 
 .topic-progress {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns:
+    1fr auto;
   align-items: center;
   gap: 12px;
 }
@@ -838,6 +1058,7 @@ textarea:focus {
 }
 
 .answer-card {
+  scroll-margin-top: 90px;
   margin-top: 24px;
   padding: 32px;
   border-radius: 20px;
@@ -845,8 +1066,10 @@ textarea:focus {
 
 .answer-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items:
+    flex-start;
+  justify-content:
+    space-between;
   gap: 20px;
 }
 
@@ -896,19 +1119,13 @@ textarea:focus {
   flex: 1;
   min-height: 44px;
   padding: 0 13px;
-  border: 1px solid #d8d2e7;
+  border:
+    1px solid #d8d2e7;
   border-radius: 10px;
   outline: none;
   background: white;
   color: #302947;
   font: inherit;
-}
-
-.evaluation-row input:focus {
-  border-color: #8064cf;
-  box-shadow:
-    0 0 0 4px
-    rgba(128, 100, 207, 0.1);
 }
 
 .evaluation-row button {
@@ -944,6 +1161,165 @@ textarea:focus {
   color: #a44444;
 }
 
+.floating-composer {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 1000;
+
+  width:
+    min(
+      720px,
+      calc(100% - 32px)
+    );
+
+  padding: 10px;
+
+  border:
+    1px solid #e2ddec;
+
+  border-radius: 18px;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.97
+    );
+
+  box-shadow:
+    0 12px 45px
+    rgba(
+      61,
+      43,
+      102,
+      0.18
+    );
+
+  transform:
+    translateX(-50%);
+
+  backdrop-filter:
+    blur(12px);
+}
+
+.floating-input-row {
+  display: flex;
+  align-items:
+    flex-end;
+  gap: 10px;
+}
+
+.floating-input-row textarea {
+  flex: 1;
+
+  min-height: 60px;
+  max-height: 120px;
+
+  padding: 11px 14px;
+
+  border: 0;
+  outline: none;
+
+  resize: none;
+  overflow-y: hidden;
+  background: transparent;
+  color: #302947;
+
+  font: inherit;
+  line-height: 1.4;
+}
+
+.floating-input-row
+textarea::placeholder {
+  color: #aaa3b2;
+}
+
+.floating-send {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border: 0;
+  border-radius: 12px;
+
+  background: #7658cf;
+  color: white;
+
+  font-size: 21px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.floating-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floating-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  margin-top: 5px;
+  padding: 0 4px;
+}
+
+.floating-mode-button {
+  padding: 6px 10px;
+
+  border:
+    1px solid transparent;
+
+  border-radius: 8px;
+
+  background: transparent;
+  color: #71697d;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.floating-mode-button.active {
+  border-color: #d8cff1;
+  background: #eee9fb;
+  color: #684bc0;
+}
+
+.floating-subject {
+  margin-left: auto;
+  padding-right: 5px;
+
+  color: #9992a3;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.floating-enter-active,
+.floating-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.floating-enter-from,
+.floating-leave-to {
+  opacity: 0;
+
+  transform:
+    translateX(-50%)
+    translateY(15px);
+}
+
 .error {
   margin-top: 16px;
   padding: 12px 14px;
@@ -952,7 +1328,9 @@ textarea:focus {
   color: #a83b4c;
 }
 
-@media (max-width: 850px) {
+@media (
+  max-width: 850px
+) {
   .topbar {
     padding: 0 5%;
   }

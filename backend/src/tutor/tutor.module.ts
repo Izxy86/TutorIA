@@ -7,6 +7,7 @@ import { AiModule } from '../ai/ai.module';
 import { PedagogicalModule } from '../pedagogical/pedagogical.module';
 import { EvaluatorModule } from '../evaluator/evaluator.module';
 import { ProgressModule } from '../progress/progress.module';
+import { AnswerEvaluatorService } from '../answer-evaluator/answer-evaluator.service';
 
 @Module({
   imports: [KnowledgeModule, 
@@ -18,6 +19,8 @@ import { ProgressModule } from '../progress/progress.module';
     EvaluatorModule,
     ProgressModule],
   controllers: [TutorController],
-  providers: [TutorService],
+  providers: [TutorService,
+    AnswerEvaluatorService,
+  ],
 })
 export class TutorModule {}

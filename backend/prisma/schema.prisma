@@ -1,16 +1,105 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
   moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id               String            @id @default(uuid())
+  name             String
+  email            String            @unique
+  role             UserRole
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  password         String?
+  evaluations      Evaluation[]
+  interactions     Interaction[]
+  pendingExercises PendingExercise[]
+  progress         StudentProgress[]
+}
+
+model Subject {
+  id               String            @id @default(uuid())
+  name             String
+  createdAt        DateTime          @default(now())
+  interactions     Interaction[]
+  knowledgeItems   KnowledgeItem[]
+  pendingExercises PendingExercise[]
+  progress         StudentProgress[]
+}
+
+model KnowledgeItem {
+  id        String          @id @default(uuid())
+  title     String
+  content   String
+  topic     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  subjectId String
+  source    KnowledgeSource @default(TEACHER)
+  validated Boolean         @default(false)
+  subject   Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+}
+
+model Interaction {
+  id           String       @id @default(uuid())
+  question     String
+  response     String?
+  activityType ActivityType
+  usedAI       Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  userId       String
+  subjectId    String
+  evaluation   Evaluation?
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudentProgress {
+  id             String   @id @default(uuid())
+  topic          String
+  masteryLevel   Int      @default(0)
+  attempts       Int      @default(0)
+  correctAnswers Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  userId         String
+  subjectId      String
+  subject        Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId, topic])
+}
+
+model Evaluation {
+  id               String      @id @default(uuid())
+  score            Int?
+  isCorrect        Boolean?
+  needsHelp        Boolean     @default(false)
+  suspectedEvasion Boolean     @default(false)
+  feedback         String?
+  createdAt        DateTime    @default(now())
+  userId           String
+  interactionId    String      @unique
+  interaction      Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PendingExercise {
+  id             String   @id @default(uuid())
+  question       String
+  topic          String
+  expectedAnswer String
+  createdAt      DateTime @default(now())
+  userId         String
+  subjectId      String
+  subject        Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, subjectId])
 }
 
 enum UserRole {
@@ -27,88 +116,7 @@ enum ActivityType {
   REVIEW
 }
 
-model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String?
-  role      UserRole
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  interactions Interaction[]
-  progress     StudentProgress[]
-  evaluations  Evaluation[]
-}
-
-model Subject {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-
-  knowledgeItems KnowledgeItem[]
-  interactions   Interaction[]
-  progress       StudentProgress[]
-}
-
-model KnowledgeItem {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  topic     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-}
-
-model Interaction {
-  id           String       @id @default(uuid())
-  question     String
-  response     String?
-  activityType ActivityType
-  usedAI       Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  evaluation Evaluation?
-}
-
-model StudentProgress {
-  id             String   @id @default(uuid())
-  topic          String
-  masteryLevel   Int      @default(0)
-  attempts       Int      @default(0)
-  correctAnswers Int      @default(0)
-  updatedAt      DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, subjectId, topic])
-}
-
-model Evaluation {
-  id               String   @id @default(uuid())
-  score            Int?
-  isCorrect        Boolean?
-  needsHelp        Boolean  @default(false)
-  suspectedEvasion Boolean  @default(false)
-  feedback         String?
-  createdAt        DateTime @default(now())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  interactionId String      @unique
-  interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+enum KnowledgeSource {
+  TEACHER
+  AI
 }
