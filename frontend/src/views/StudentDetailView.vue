@@ -61,14 +61,14 @@ interface StudentReport {
 
 const route = useRoute()
 const router = useRouter()
-
-const subjectId = '9f274882-e017-4bb1-9da0-d5668f5beb12'
-
 const report = ref<StudentReport | null>(null)
 const loading = ref(false)
 const error = ref('')
 
+
+
 const userId = computed(() => route.params.userId as string)
+const subjectId = computed(() => route.params.subjectId as string)
 
 const studentName = computed(
   () => report.value?.student?.name ?? 'Alumno',
@@ -79,7 +79,7 @@ const studentEmail = computed(
 )
 
 const subjectName = computed(
-  () => report.value?.subject?.name ?? 'Matemática',
+  () => report.value?.subject?.name ?? 'Sin Materia',
 )
 
 const averageMastery = computed(
@@ -92,7 +92,7 @@ const loadReport = async () => {
 
   try {
     const { data } = await api.get<StudentReport>(
-      `/reports/student/${userId.value}/${subjectId}`,
+      `/reports/student/${userId.value}/${subjectId.value}`,
     )
 
     report.value = data

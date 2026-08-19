@@ -36,7 +36,7 @@ const router = createRouter({
       },
     },
     {
-      path: '/teacher/student/:userId',
+      path: '/teacher/student/:userId/:subjectId',
       name: 'teacher-student',
       component: () => import('@/views/StudentDetailView.vue'),
       meta: {

@@ -49,12 +49,18 @@ interface KnowledgeItem {
   subjectId: string
 }
 
+interface Subject {
+  id: string
+  name: string
+}
+
+const subjects = ref<Subject[]>([])
+const subjectId = ref('')
+
 const router = useRouter()
 const auth = useAuthStore()
 
-const subjectId = ref(
-  '9f274882-e017-4bb1-9da0-d5668f5beb12',
-)
+
 
 const dashboard = ref<TeacherDashboard | null>(null)
 const knowledgeItems = ref<KnowledgeItem[]>([])
@@ -70,6 +76,26 @@ const materialSuccess = ref('')
 const materialTitle = ref('')
 const materialTopic = ref('')
 const materialContent = ref('')
+
+const loadSubjects = async () => {
+  const { data } = await api.get<Subject[]>('/subjects')
+
+  subjects.value = data
+
+  if (data.length > 0 && !subjectId.value) {
+    subjectId.value = data[0]!.id
+  }
+}
+
+const changeSubject = async () => {
+  dashboard.value = null
+  knowledgeItems.value = []
+
+  await Promise.all([
+    loadDashboard(),
+    loadKnowledge(),
+  ])
+}
 
 const userName = computed(
   () => auth.user?.name ?? 'Docente',
@@ -208,11 +234,9 @@ const saveMaterial = async () => {
   }
 }
 
-const openStudent = (
-  userId: string,
-) => {
+const openStudent = (userId: string) => {
   router.push(
-    `/teacher/student/${userId}`,
+    `/teacher/student/${userId}/${subjectId.value}`,
   )
 }
 
@@ -259,10 +283,14 @@ const deleteKnowledge = async (id: string) => {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    loadDashboard(),
-    loadKnowledge(),
-  ])
+  await loadSubjects()
+
+  if (subjectId.value) {
+    await Promise.all([
+      loadDashboard(),
+      loadKnowledge(),
+    ])
+  }
 })
 </script>
 
@@ -326,22 +354,26 @@ onMounted(async () => {
         </div>
 
         <div class="subject-card">
-          <span>
-            Materia seleccionada
-          </span>
+  <span>Materia seleccionada</span>
 
-          <strong>
-            {{
-              dashboard?.subject?.name ??
-              'Matemática'
-            }}
-          </strong>
+  <select
+    v-model="subjectId"
+    class="subject-select"
+    @change="changeSubject"
+  >
+    <option
+      v-for="subject in subjects"
+      :key="subject.id"
+      :value="subject.id"
+    >
+      {{ subject.name }}
+    </option>
+  </select>
 
-          <small>
-            Seguimiento actualizado con
-            datos reales
-          </small>
-        </div>
+  <small>
+    Seguimiento actualizado con datos reales
+  </small>
+</div>
       </section>
 
       <!-- MÉTRICAS -->
@@ -665,7 +697,25 @@ onMounted(async () => {
             <h3>
               Agregar contenido
             </h3>
+            <div class="material-field">
+              <label for="materialSubject">
+                Materia
+              </label>
 
+              <select
+                id="materialSubject"
+                v-model="subjectId"
+                @change="changeSubject"
+              >
+                <option
+                  v-for="subject in subjects"
+                  :key="subject.id"
+                  :value="subject.id"
+                >
+                  {{ subject.name }}
+                </option>
+              </select>
+            </div>
             <div class="material-field">
               <label for="materialTitle">
                 Título
@@ -1456,6 +1506,19 @@ onMounted(async () => {
   font-size: 21px;
 }
 
+.material-field input,
+.material-field textarea,
+.material-field select {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid #dcd7e8;
+  border-radius: 10px;
+  outline: none;
+  background: white;
+  color: #302947;
+  font: inherit;
+}
+
 .material-field {
   margin-bottom: 16px;
 }
@@ -1783,6 +1846,20 @@ onMounted(async () => {
   .knowledge-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.subject-select {
+  width: 100%;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #d8d1ea;
+  border-radius: 9px;
+  background: white;
+  color: #684bc0;
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
 }
 
 @media (max-width: 750px) {
