@@ -20,8 +20,31 @@ export class AiService {
       model: 'gemini-2.5-flash',
     });
 
-    const result = await model.generateContent(prompt);
+    const maxRetries = 2;
 
-    return result.response.text();
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+      } catch (error: any) {
+        const is503 = error?.status === 503;
+
+        if (!is503 || attempt === maxRetries) {
+          throw error;
+        }
+
+        const delay = 1500 * (attempt + 1);
+
+        console.warn(
+          `Gemini 503. Reintento ${attempt + 1}/${maxRetries} en ${delay}ms...`,
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, delay),
+        );
+      }
+    }
+
+    throw new Error('No se pudo obtener respuesta de Gemini');
   }
 }

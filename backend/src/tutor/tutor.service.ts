@@ -378,6 +378,13 @@ Cumplí estrictamente la regla pedagógica indicada.
         exercise.expectedAnswer,
       );
 
+      console.log({
+  userId,
+  subjectId,
+  exerciseSubjectId: exercise.subjectId,
+  topic: exercise.topic,
+})
+
     const progress =
       await this.progressService.updateProgress(
         userId,

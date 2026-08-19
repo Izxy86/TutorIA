@@ -5,10 +5,13 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  watch,
 } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 interface ProgressItem {
   id: string
@@ -55,12 +58,16 @@ interface StudentReport {
   }[]
 }
 
+interface Subject {
+  id: string
+  name: string
+}
+
+const subjects = ref<Subject[]>([])
+const subjectId = ref('')
 const router = useRouter()
 const auth = useAuthStore()
 
-const subjectId = ref(
-  '9f274882-e017-4bb1-9da0-d5668f5beb12',
-)
 
 const activityType =
   ref<'LEARNING' | 'PRACTICE'>('LEARNING')
@@ -71,6 +78,10 @@ const responseActivityType =
 const question = ref('')
 const floatingQuestion = ref('')
 const response = ref('')
+const formattedResponse = computed(() => {
+  const html = marked.parse(response.value) as string
+  return DOMPurify.sanitize(html)
+})
 const source = ref('')
 
 const loading = ref(false)
@@ -124,6 +135,17 @@ const currentMastery = computed(
     0,
 )
 
+const loadSubjects = async () => {
+  const { data } = await api.get<Subject[]>('/subjects')
+
+  subjects.value = data
+
+  const firstSubject = data[0]
+
+if (firstSubject && !subjectId.value) {
+  subjectId.value = firstSubject.id
+}
+}
 const subjectName = computed(
   () =>
     report.value?.subject.name ??
@@ -141,20 +163,24 @@ const askTutorFromFloating = async () => {
 }
 
 const loadReport = async () => {
-  if (!auth.user?.id) return
+  if (!auth.user?.id || !subjectId.value) return
+
+  report.value = null
 
   try {
-    const { data } =
-      await api.get<StudentReport>(
-        `/reports/student/${auth.user.id}/${subjectId.value}`,
-      )
+    const { data } = await api.get<StudentReport>(
+      `/reports/student/${auth.user.id}/${subjectId.value}`,
+    )
 
     report.value = data
   } catch {
-    error.value =
-      'No pudimos cargar tu progreso.'
+    report.value = null
   }
 }
+
+watch(subjectId, async () => {
+  await loadReport()
+})
 
 const askTutor = async () => {
   if (!question.value.trim()) return
@@ -239,6 +265,7 @@ const logout = async () => {
 }
 
 onMounted(async () => {
+  await loadSubjects()
   await loadReport()
 
   activityObserver =
@@ -429,15 +456,15 @@ onBeforeUnmount(() => {
               Materia
             </label>
 
-            <select
-              v-model="subjectId"
-            >
-              <option
-                value="9f274882-e017-4bb1-9da0-d5668f5beb12"
-              >
-                Matemática
-              </option>
-            </select>
+            <select v-model="subjectId">
+                <option
+                  v-for="subject in subjects"
+                  :key="subject.id"
+                  :value="subject.id"
+                >
+                  {{ subject.name }}
+                </option>
+              </select>
           </div>
 
           <div
@@ -509,7 +536,7 @@ onBeforeUnmount(() => {
                 id="question"
                 v-model="question"
                 rows="5"
-                placeholder="Ej: ¿Cómo funciona el Teorema de Pitágoras?"
+                placeholder="Estoy Listo Cuando Tú Lo Estés"
                 required
               ></textarea>
             </div>
@@ -628,8 +655,9 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
-        <div class="answer-content">
-          {{ response }}
+        <div class="answer-content"
+             v-html="formattedResponse">
+          
         </div>
 
         <div
@@ -1088,7 +1116,7 @@ textarea:focus {
   background: #faf9fd;
   color: #51495f;
   line-height: 1.75;
-  white-space: pre-wrap;
+ 
 }
 
 .evaluation-box {
