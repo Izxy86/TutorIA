@@ -144,58 +144,83 @@ export class KnowledgeService {
   }
 
   async findRelevant(
-    subjectId: string,
-    question: string,
-  ) {
-    const words = question
-      .toLowerCase()
-      .replace(/[¿?¡!.,]/g, '')
-      .split(/\s+/)
-      .filter((word) => word.length > 4);
+  subjectId: string,
+  question: string,
+) {
+  const stopWords = new Set([
+    'quien',
+    'quién',
+    'como',
+    'cómo',
+    'donde',
+    'dónde',
+    'cuando',
+    'cuándo',
+    'porque',
+    'porqué',
+    'cual',
+    'cuál',
+    'sobre',
+    'explica',
+    'explicame',
+    'explícame',
+    'quiero',
+    'saber',
+  ]);
 
-    if (words.length === 0) {
-      return [];
-    }
+  const words = question
+    .toLowerCase()
+    .replace(/[¿?¡!.,]/g, '')
+    .split(/\s+/)
+    .filter(
+      (word) =>
+        word.length > 3 &&
+        !stopWords.has(word),
+    );
 
-    return this.prisma.knowledgeItem.findMany({
-      where: {
-        subjectId,
-        AND: [
-          {
-            OR: [
-              {
-                source: KnowledgeSource.TEACHER,
-              },
-              {
-                source: KnowledgeSource.AI,
-                validated: true,
-              },
-            ],
-          },
-          {
-            OR: words.flatMap((word) => [
-              {
-                title: {
-                  contains: word,
-                  mode: 'insensitive' as const,
-                },
-              },
-              {
-                topic: {
-                  contains: word,
-                  mode: 'insensitive' as const,
-                },
-              },
-            ]),
-          },
-        ],
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 5,
-    });
+  if (words.length === 0) {
+    return [];
   }
+
+  return this.prisma.knowledgeItem.findMany({
+    where: {
+      subjectId,
+      AND: [
+        {
+          OR: [
+            {
+              source: KnowledgeSource.TEACHER,
+            },
+            {
+              source: KnowledgeSource.AI,
+              validated: true,
+            },
+          ],
+        },
+        {
+          OR: words.flatMap((word) => [
+            {
+              title: {
+                contains: word,
+                mode: 'insensitive' as const,
+              },
+            },
+            {
+              topic: {
+                contains: word,
+                mode: 'insensitive' as const,
+              },
+            },
+          ]),
+        },
+      ],
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: 5,
+  });
+}
 
   async validate(id: string) {
   return this.prisma.knowledgeItem.update({

@@ -28,111 +28,196 @@ export class TutorService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async ask(
-    userId: string,
-    subjectId: string,
-    question: string,
-    activityType: ActivityType,
-  ) {
-    /*
-     * 1. Buscar conocimiento local.
-     *
-     * En PRACTICE/EXAM no devolvemos directamente
-     * conocimiento local porque podría revelar
-     * la solución sin aplicar estrategia pedagógica.
-     */
-    const canRespondDirectlyFromLocal =
-      activityType === ActivityType.LEARNING ||
-      activityType === ActivityType.REVIEW;
+async ask(
+  userId: string,
+  subjectId: string,
+  question: string,
+  activityType: ActivityType,
+) {
+  /*
+   * 0. Obtener materia seleccionada.
+   */
+  const subject =
+    await this.prisma.subject.findUnique({
+      where: {
+        id: subjectId,
+      },
+    });
 
-    if (canRespondDirectlyFromLocal) {
-      const localResults =
-        await this.knowledgeService.findRelevant(
-          subjectId,
-          question,
-        );
+  if (!subject) {
+    throw new NotFoundException(
+      'La materia seleccionada no existe.',
+    );
+  }
 
-      if (localResults.length > 0) {
-        const item = localResults[0];
+  /*
+   * 1. Validar si la pregunta corresponde
+   * a la materia seleccionada.
+   */
+  const questionIsRelevant =
+    await this.isRelevantToSubject(
+      subject.name,
+      question,
+    );
 
-        const response = item.content;
+  /*
+   * Si está fuera de materia, no seguimos.
+   */
+  if (!questionIsRelevant) {
+    const response =
+      `Esta consulta no corresponde a la materia ${subject.name}. ` +
+      `TutorIA solo puede ayudarte con contenidos relacionados con esa materia.`;
 
-        await this.interactionsService.create(
-          userId,
-          subjectId,
-          question,
-          response,
-          activityType,
-          false,
-        );
+    await this.interactionsService.create(
+      userId,
+      subjectId,
+      question,
+      response,
+      activityType,
+      false,
+    );
 
-        return {
-          source:
-            item.source === KnowledgeSource.AI
-              ? 'AI_CACHE'
-              : 'LOCAL',
-          usedAI: false,
-          cached:
-            item.source === KnowledgeSource.AI,
-          usedMemory: false,
-          memoryItems: 0,
-          validated: true,
-          validationReason: null,
-          attempts: 0,
-          hasPendingExercise: false,
-          response,
-        };
-      }
-    }
+    return {
+      source: 'FILTER',
+      usedAI: false,
+      cached: false,
+      savedToKnowledge: false,
+      usedMemory: false,
+      memoryItems: 0,
+      progressItems: 0,
+      validated: true,
+      validationReason: null,
+      attempts: 0,
+      hasPendingExercise: false,
+      response,
+      suspectedEvasion: false,
+      needsHelp: false,
+    };
+  }
 
-    /*
-     * 2. Recuperar memoria reciente.
-     */
-    const history =
-      await this.interactionsService.findRecentByUser(
-        userId,
-        5,
+  /*
+   * 2. Buscar conocimiento local.
+   *
+   * En PRACTICE/EXAM no devolvemos directamente
+   * conocimiento local porque podría revelar
+   * la solución sin aplicar estrategia pedagógica.
+   */
+  const canRespondDirectlyFromLocal =
+    activityType === ActivityType.LEARNING ||
+    activityType === ActivityType.REVIEW;
+
+  if (canRespondDirectlyFromLocal) {
+    const localResults =
+      await this.knowledgeService.findRelevant(
+        subjectId,
+        question,
       );
 
-    const historyContext = history
-      .map(
-        (item) => `
+    if (localResults.length > 0) {
+      const item = localResults[0];
+
+      /*
+       * La pregunta ya fue validada contra la materia,
+       * así que podemos utilizar el resultado local.
+       */
+      const response = item.content;
+
+      await this.interactionsService.create(
+        userId,
+        subjectId,
+        question,
+        response,
+        activityType,
+        false,
+      );
+
+      return {
+        source:
+          item.source === KnowledgeSource.AI
+            ? 'AI_CACHE'
+            : 'LOCAL',
+
+        usedAI: false,
+
+        cached:
+          item.source === KnowledgeSource.AI,
+
+        savedToKnowledge: false,
+
+        usedMemory: false,
+        memoryItems: 0,
+        progressItems: 0,
+
+        validated: true,
+        validationReason: null,
+
+        attempts: 0,
+        hasPendingExercise: false,
+
+        response,
+
+        suspectedEvasion: false,
+        needsHelp: false,
+      };
+    }
+  }
+
+  /*
+   * 3. Recuperar memoria reciente
+   * SOLO de la materia seleccionada.
+   */
+  const history =
+    await this.interactionsService.findRecentByUser(
+      userId,
+      subjectId,
+      5,
+    );
+
+  const historyContext = history
+    .map(
+      (item) => `
 Pregunta anterior: ${item.question}
 Respuesta anterior: ${item.response}
 Tipo de actividad: ${item.activityType}
 `,
-      )
-      .join('\n');
+    )
+    .join('\n');
 
-    /*
-     * 3. Recuperar progreso.
-     */
-    const progress =
-      await this.progressService.findByUserAndSubject(
-        userId,
-        subjectId,
-      );
+  /*
+   * 4. Recuperar progreso
+   * SOLO de la materia seleccionada.
+   */
+  const progress =
+    await this.progressService.findByUserAndSubject(
+      userId,
+      subjectId,
+    );
 
-    const progressContext = progress
-      .map(
-        (item) =>
-          `${item.topic}: dominio ${item.masteryLevel}% (${item.correctAnswers}/${item.attempts} respuestas correctas)`,
-      )
-      .join('\n');
+  const progressContext = progress
+    .map(
+      (item) =>
+        `${item.topic}: dominio ${item.masteryLevel}% (${item.correctAnswers}/${item.attempts} respuestas correctas)`,
+    )
+    .join('\n');
 
-    /*
-     * 4. Estrategia pedagógica.
-     */
-    const pedagogicalInstruction =
-      this.pedagogicalService.getInstruction(
-        activityType,
-      );
+  /*
+   * 5. Estrategia pedagógica.
+   */
+  const pedagogicalInstruction =
+    this.pedagogicalService.getInstruction(
+      activityType,
+    );
 
-    /*
-     * 5. Prompt principal.
-     */
-    const prompt = `
+  /*
+   * 6. Prompt principal.
+   */
+  const prompt = `
 Sos TutorIA, un tutor educativo institucional.
+
+Materia seleccionada:
+${subject.name}
+
+Tu ámbito de respuesta está limitado exclusivamente a contenidos relacionados con la materia seleccionada.
 
 Pregunta actual del estudiante:
 ${question}
@@ -140,16 +225,18 @@ ${question}
 Tipo de actividad:
 ${activityType}
 
-Historial reciente del estudiante:
+Historial reciente del estudiante dentro de ${subject.name}:
 ${historyContext || 'No existen interacciones anteriores.'}
 
-Progreso académico registrado:
+Progreso académico registrado en ${subject.name}:
 ${progressContext || 'No existe progreso registrado.'}
 
 Regla pedagógica:
 ${pedagogicalInstruction}
 
-Utilizá el historial únicamente cuando sea relevante.
+Utilizá el historial únicamente cuando sea relevante para la pregunta actual.
+
+No mezcles contenidos pertenecientes a otras materias.
 
 Adaptá la dificultad según el progreso académico registrado.
 
@@ -160,35 +247,42 @@ Si el dominio es alto, aumentá progresivamente la dificultad.
 No inventes información sobre el estudiante.
 
 Cumplí estrictamente la regla pedagógica indicada.
+
+Recordá: sos un tutor de ${subject.name}, no un asistente general.
 `;
 
-    /*
-     * 6. Consultar IA.
-     */
-    let response =
-      await this.aiService.generate(prompt);
+  /*
+   * 7. Consultar IA.
+   */
+  let response =
+    await this.aiService.generate(prompt);
 
-    /*
-     * 7. Evaluar respuesta de TutorIA.
-     */
-    let evaluation =
-      this.evaluatorService.evaluate(
-        question,
-        response,
-        activityType,
-      );
+  /*
+   * 8. Evaluar respuesta de TutorIA.
+   */
+  let evaluation =
+    this.evaluatorService.evaluate(
+      question,
+      response,
+      activityType,
+    );
 
-    let attempts = 0;
+  let attempts = 0;
 
-    /*
-     * 8. Un reintento si el evaluador rechaza.
-     */
-    while (
-      !evaluation.valid &&
-      attempts < 1
-    ) {
-      const retryPrompt = `
+  /*
+   * 9. Un reintento si el evaluador rechaza.
+   */
+  while (
+    !evaluation.valid &&
+    attempts < 1
+  ) {
+    const retryPrompt = `
 Sos TutorIA, un tutor educativo institucional.
+
+Materia seleccionada:
+${subject.name}
+
+Solo podés responder consultas relacionadas con ${subject.name}.
 
 Pregunta actual:
 ${question}
@@ -196,10 +290,10 @@ ${question}
 Tipo de actividad:
 ${activityType}
 
-Historial reciente:
+Historial reciente de ${subject.name}:
 ${historyContext || 'No existen interacciones anteriores.'}
 
-Progreso:
+Progreso en ${subject.name}:
 ${progressContext || 'No existe progreso registrado.'}
 
 Regla pedagógica:
@@ -212,50 +306,60 @@ ${evaluation.reason}
 
 Generá una nueva respuesta corrigiendo ese problema.
 
+No mezcles información de otras materias.
+
 Cumplí estrictamente la regla pedagógica indicada.
 `;
 
-      response =
-        await this.aiService.generate(
-          retryPrompt,
-        );
+    response =
+      await this.aiService.generate(
+        retryPrompt,
+      );
 
-      evaluation =
-        this.evaluatorService.evaluate(
-          question,
-          response,
-          activityType,
-        );
+    evaluation =
+      this.evaluatorService.evaluate(
+        question,
+        response,
+        activityType,
+      );
 
-      attempts++;
-    }
+    attempts++;
+  }
 
-    /*
-     * 9. Guardar interacción.
-     */
-    await this.interactionsService.createWithEvaluation(
-      userId,
-      subjectId,
-      question,
-      response,
-      activityType,
-      true,
-      evaluation.suspectedEvasion,
-      evaluation.needsHelp,
-      evaluation.reason,
-    );
+  /*
+   * 10. Guardar interacción.
+   */
+  await this.interactionsService.createWithEvaluation(
+    userId,
+    subjectId,
+    question,
+    response,
+    activityType,
+    true,
+    evaluation.suspectedEvasion,
+    evaluation.needsHelp,
+    evaluation.reason,
+  );
 
-    /*
-     * 10. Cache de conocimiento.
-     *
-     * Solo LEARNING validado.
-     */
-    let savedToKnowledge = false;
+  /*
+   * 11. Cache de conocimiento.
+   *
+   * Solo LEARNING validado y relevante
+   * para la materia seleccionada.
+   */
+  let savedToKnowledge = false;
 
-    if (
-      evaluation.valid &&
-      activityType === ActivityType.LEARNING
-    ) {
+  if (
+    evaluation.valid &&
+    activityType === ActivityType.LEARNING
+  ) {
+    const responseIsRelevant =
+      await this.isRelevantToSubject(
+        subject.name,
+        question,
+      );
+
+    if (responseIsRelevant) {
       await this.knowledgeService.saveFromAI(
         subjectId,
         question,
@@ -264,84 +368,90 @@ Cumplí estrictamente la regla pedagógica indicada.
 
       savedToKnowledge = true;
     }
+  }
 
-    /*
-     * 11. Si es práctica, obtener internamente
-     * tema + respuesta esperada y persistirlos.
-     */
-    let hasPendingExercise = false;
+  /*
+   * 12. Si es práctica, obtener internamente
+   * tema + respuesta esperada y persistirlos.
+   */
+  let hasPendingExercise = false;
+
+  if (
+    evaluation.valid &&
+    activityType === ActivityType.PRACTICE
+  ) {
+    const exercise =
+      await this.extractExerciseData(
+        question,
+        response,
+      );
 
     if (
-      evaluation.valid &&
-      activityType === ActivityType.PRACTICE
+      exercise?.topic &&
+      exercise?.expectedAnswer
     ) {
-      const exercise =
-        await this.extractExerciseData(
-          question,
-          response,
-        );
+      await this.prisma.pendingExercise.deleteMany({
+        where: {
+          userId,
+          subjectId,
+        },
+      });
 
-      if (
-        exercise?.topic &&
-        exercise?.expectedAnswer
-      ) {
-        /*
-         * Dejamos un único ejercicio pendiente
-         * por alumno + materia.
-         */
-        await this.prisma.pendingExercise.deleteMany({
-          where: {
-            userId,
-            subjectId,
-          },
-        });
+      await this.prisma.pendingExercise.create({
+        data: {
+          userId,
+          subjectId,
 
-        await this.prisma.pendingExercise.create({
-          data: {
-            userId,
-            subjectId,
-            question:
-              exercise.question ||
-              question,
-            topic: exercise.topic,
-            expectedAnswer:
-              exercise.expectedAnswer,
-          },
-        });
+          question:
+            exercise.question ||
+            question,
 
-        hasPendingExercise = true;
-      }
+          topic: exercise.topic,
+
+          expectedAnswer:
+            exercise.expectedAnswer,
+        },
+      });
+
+      hasPendingExercise = true;
     }
-
-    return {
-      source: 'AI',
-      usedAI: true,
-      cached: false,
-      savedToKnowledge,
-
-      usedMemory:
-        history.length > 0 ||
-        progress.length > 0,
-
-      memoryItems: history.length,
-      progressItems: progress.length,
-
-      validated: evaluation.valid,
-      validationReason:
-        evaluation.reason ?? null,
-
-      attempts,
-      hasPendingExercise,
-
-      response,
-
-      suspectedEvasion:
-        evaluation.suspectedEvasion,
-
-      needsHelp:
-        evaluation.needsHelp,
-    };
   }
+
+  return {
+    source: 'AI',
+
+    usedAI: true,
+
+    cached: false,
+
+    savedToKnowledge,
+
+    usedMemory:
+      history.length > 0 ||
+      progress.length > 0,
+
+    memoryItems: history.length,
+
+    progressItems: progress.length,
+
+    validated: evaluation.valid,
+
+    validationReason:
+      evaluation.reason ?? null,
+
+    attempts,
+
+    hasPendingExercise,
+
+    response,
+
+    suspectedEvasion:
+      evaluation.suspectedEvasion,
+
+    needsHelp:
+      evaluation.needsHelp,
+  };
+}
 
   /*
    * Evalúa la respuesta del alumno.
@@ -502,4 +612,28 @@ Si no existe un ejercicio concreto con una respuesta evaluable, respondé:
       return null;
     }
   }
+
+  private async isRelevantToSubject(
+  subjectName: string,
+  question: string,
+): Promise<boolean> {
+  const prompt = `
+Determiná si la siguiente pregunta pertenece razonablemente a la materia indicada.
+
+Materia:
+${subjectName}
+
+Pregunta:
+${question}
+
+Respondé exclusivamente:
+true
+o
+false
+`;
+
+  const result = await this.aiService.generate(prompt);
+
+  return result.trim().toLowerCase().startsWith('true');
+}
 }

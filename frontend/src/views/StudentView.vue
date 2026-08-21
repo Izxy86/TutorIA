@@ -179,9 +179,17 @@ const loadReport = async () => {
 }
 
 watch(subjectId, async () => {
+  question.value = ''
+  floatingQuestion.value = ''
+  response.value = ''
+  responseActivityType.value = null
+  evaluationAnswer.value = ''
+  evaluationResult.value = ''
+  evaluationFeedback.value = ''
+  error.value = ''
+
   await loadReport()
 })
-
 const askTutor = async () => {
   if (!question.value.trim()) return
 
